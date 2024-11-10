@@ -9,6 +9,7 @@
 #include <iostream>
 #include <variant>
 #include <fstream>
+//김현수
 
 // Constructor
 ATM::ATM(const std::string& serialNumber, ATMType atmType, std::shared_ptr<Bank> primaryBank, bool isBilingual)
