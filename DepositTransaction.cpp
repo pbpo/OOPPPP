@@ -14,19 +14,18 @@ bool DepositTransaction::execute() {
     auto systemStatus = SystemStatus::getInstance();
     Bank* globalBank = systemStatus->getBank();
 
-    // Fee calculation
+    // 수수료 계산
     if (account->getBankName() == globalBank->getBankName()) {
-        fee = 1000; // Primary bank
+        fee = 1000; // 기본 은행
     } else {
-        fee = 2000; // Non-primary bank
+        fee = 2000; // 타 은행
     }
 
+    int totalInserted = 0;
+    int totalBills = 0;
+    std::map<Denomination, int> insertedCash;
 
     if (depositType == DepositType::CASH) {
-        std::map<Denomination, int> insertedCash;
-        int totalInserted = 0;
-        int totalBills = 0;
-
         std::cout << "Please insert cash by specifying the number of bills for each denomination." << std::endl;
         for (const auto& denomPair : DENOMINATION_VALUES) {
             int count = 0;
@@ -48,8 +47,8 @@ bool DepositTransaction::execute() {
             totalBills += count;
         }
 
-        if (totalInserted != amount + fee) {
-            std::cout << "Inserted cash amount does not match the deposit amount plus fee." << std::endl;
+        if (totalInserted < fee) {
+            std::cout << "Inserted cash is insufficient to cover the fee of KRW " << fee << "." << std::endl;
             return false;
         }
 
@@ -58,10 +57,21 @@ bool DepositTransaction::execute() {
             return false;
         }
 
-        // Accept cash
+        // 수수료 차감 후 실제 입금 금액 계산
+        int depositAmount = totalInserted - fee;
+
+        // 현금 수용
         CashManager::getInstance()->acceptCash(insertedCash);
-        std::cout << "Cash accepted." << std::endl;
-    } else if (depositType == DepositType::CHECK) {
+        std::cout << "Cash accepted. Fee of KRW " << fee << " has been deducted." << std::endl;
+
+        // 계좌에 입금
+        account->deposit(depositAmount);
+        std::cout << "Deposited KRW " << depositAmount << " into account " << account->getAccountNumber() << "." << std::endl;
+
+        // 트랜잭션 금액 설정
+        this->amount = depositAmount;
+    }
+    else if (depositType == DepositType::CHECK) {
         int checkAmount = 0;
         while (true) {
             auto amountVariant = InputHandler::getInput("Please enter the check amount: ", InputType::INT);
@@ -77,62 +87,21 @@ bool DepositTransaction::execute() {
             }
         }
 
-        if (checkAmount != amount) {
-            std::cout << "Check amount does not match the deposit amount." << std::endl;
+        if (checkAmount < fee) {
+            std::cout << "Check amount is insufficient to cover the fee of KRW " << fee << "." << std::endl;
             return false;
         }
 
-        // Fee must be paid in cash
-        int totalInserted = 0;
-        std::map<Denomination, int> insertedCash;
-        int totalBills = 0;
+        // 수수료 차감 후 실제 입금 금액 계산
+        int depositAmount = checkAmount - fee;
 
-        std::cout << "Please insert cash for the deposit fee of KRW " << fee << "." << std::endl;
-        for (const auto& denomPair : DENOMINATION_VALUES) {
-            int count = 0;
-            while (true) {
-                auto countVariant = InputHandler::getInput("Number of KRW " + std::to_string(denomPair.second) + " bills: ", InputType::INT);
-                try {
-                    count = std::get<int>(countVariant);
-                    if (count < 0) {
-                        std::cout << "Invalid count. Please enter a non-negative number." << std::endl;
-                        continue;
-                    }
-                    break;
-                } catch (const std::bad_variant_access&) {
-                    std::cout << "Invalid input. Please enter a number." << std::endl;
-                }
-            }
-            insertedCash[denomPair.first] = count;
-            totalInserted += denomPair.second * count;
-            totalBills += count;
-        }
+        // 계좌에 입금
+        account->deposit(depositAmount);
+        std::cout << "Deposited KRW " << depositAmount << " into account " << account->getAccountNumber() << "." << std::endl;
 
-        if (totalInserted < fee) {
-            std::cout << "Insufficient cash inserted for the fee." << std::endl;
-            return false;
-        }
-
-        if (totalBills > MAX_CASH_DEPOSIT) {
-            std::cout << "Exceeded maximum number of cash bills allowed per transaction." << std::endl;
-            return false;
-        }
-
-        // Accept fee cash
-        CashManager::getInstance()->acceptCash(insertedCash);
-        std::cout << "Fee cash accepted." << std::endl;
-
-        // Handle excess cash
-        if (totalInserted > fee) {
-            int excess = totalInserted - fee;
-            account->deposit(excess);
-            std::cout << "Excess amount of KRW " << excess << " has been deposited into your account." << std::endl;
-        }
+        // 트랜잭션 금액 설정
+        this->amount = depositAmount;
     }
-
-    // Deposit amount to account
-    account->deposit(amount);
-    std::cout << "Deposited KRW " << amount << " into account " << account->getAccountNumber() << "." << std::endl;
 
     return true;
 }
